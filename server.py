@@ -32,7 +32,7 @@ class WebSocketHandler:
         """Handle WebSocket errors."""
         print(f"Error: {error}")
         
-async def websocket_server(handler: WebSocketHandler, host="localhost", port=8765):
+async def websocket_server(handler: WebSocketHandler, host="localhost", port=9000):
     """WebSocket server to handle clients."""
     async def handler_logic(websocket):
         print(f"Client connected: {websocket.remote_address}")

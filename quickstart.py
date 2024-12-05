@@ -1,146 +1,175 @@
 import asyncio
 import base64
 import datetime
-import json
 import os
+import json
 from dotenv import load_dotenv
 from hume.client import AsyncHumeClient
 from hume.empathic_voice.chat.socket_client import ChatConnectOptions, ChatWebsocketConnection
 from hume.empathic_voice.chat.types import SubscribeEvent
+from hume.empathic_voice.types import UserInput
 from hume.core.api_error import ApiError
 from hume import MicrophoneInterface, Stream
 import websockets
-from websockets.exceptions import ConnectionClosed
-
 
 class WebSocketHandler:
-    """Handler for managing Hume EVI WebSocket behavior and sending messages."""
+    """Handler for containing the EVI WebSocket and associated socket handling behavior."""
 
-    def __init__(self):
+    def __init__(self, server_clients):
+        """Construct the WebSocketHandler, initially assigning the socket to None and the byte stream to a new Stream object."""
         self.socket = None
         self.byte_strs = Stream.new()
+        self.server_clients = server_clients  # Reference to the WebSocket server's clients
 
     def set_socket(self, socket: ChatWebsocketConnection):
-        """Set the Hume WebSocket connection."""
+        """Set the socket."""
         self.socket = socket
 
-    async def handle_hume_message(self, message: SubscribeEvent):
-        """Process and handle incoming Hume messages."""
-        if message.type in ["user_message", "assistant_message"]:
+    async def on_open(self):
+        """Logic invoked when the WebSocket connection is opened."""
+        print("WebSocket connection opened.")
+
+    async def on_message(self, message: SubscribeEvent):
+        """Callback function to handle a WebSocket message event."""
+        scores = {}
+
+        if message.type == "chat_metadata":
+            message_type = message.type.upper()
+            chat_id = message.chat_id
+            chat_group_id = message.chat_group_id
+            text = f"<{message_type}> Chat ID: {chat_id}, Chat Group ID: {chat_group_id}"
+        elif message.type in ["user_message", "assistant_message"]:
             role = message.message.role.upper()
-            content = message.message.content
-            print(f"{role}: {content}")
-
-            # Process message for broadcasting or further use
-            scores = dict(message.models.prosody.scores) if not message.from_text else {}
-            processed_message = {
-                "content": content,
-                "scores": scores,
-            }
-
-            return processed_message
-
+            message_text = message.message.content
+            text = f"{role}: {message_text}"
+            if message.from_text is False:
+                scores = dict(message.models.prosody.scores)
+            
+            if message.type == "assistant_message":
+                # Extract the top 3 emotions
+                top_3_emotions = self._extract_top_n_emotions(scores, 3)
+                # Send data to connected WebSocket server clients
+                await self.broadcast_to_clients(message_text, top_3_emotions)
+        elif message.type == "audio_output":
+            message_str: str = message.data
+            message_bytes = base64.b64decode(message_str.encode("utf-8"))
+            await self.byte_strs.put(message_bytes)
+            return
         elif message.type == "error":
             error_message: str = message.message
             error_code: str = message.code
             raise ApiError(f"Error ({error_code}): {error_message}")
-
-        return None
-
-async def send_to_separate_server(message: str):
-    """Send a message to a separate WebSocket server."""
-    uri = "ws://localhost:8765"  # Replace with your separate WebSocket server's URI
-    try:
-        async with websockets.connect(uri) as websocket:
-            # Send the message to the separate server
-            await websocket.send(message)
-            print(f"Sent to separate WebSocket server: {message}")
-    except ConnectionRefusedError:
-        print("Could not connect to the WebSocket server. Is it running?")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-
-async def sending_handler(socket: ChatWebsocketConnection):
-    """Handle sending messages over the Hume WebSocket and a separate WebSocket server.
-
-    This method waits for user input and sends a UserInput or AssistantMessage message
-    based on the provided input. The assistant's message is forwarded to a separate WebSocket server.
-    """
-    while True:
-        # Wait for user input to determine message type and content
-        message_type = input("Enter message type ('user' or 'assistant'): ").strip().lower()
-        message_content = input("Enter the message content: ").strip()
-
-        if message_type == "user":
-            # Send a UserInput message to the Hume WebSocket
-            user_input_message = UserInput(text=message_content)
-            await socket.send_user_input(user_input_message)
-        elif message_type == "assistant":
-            # Send an assistant message to the separate WebSocket server
-            await send_to_separate_server(message_content)
         else:
-            print("Invalid message type. Please enter 'user' or 'assistant'.")
+            message_type = message.type.upper()
+            text = f"<{message_type}>"
+        
+        # Print the formatted message
+        self._print_prompt(text)
+
+        # Extract and print the top 3 emotions inferred from user and assistant expressions
+        if len(scores) > 0:
+            top_3_emotions = self._extract_top_n_emotions(scores, 3)
+            self._print_emotion_scores(top_3_emotions)
+            print("")
+        else:
+            print("")
+        
+    async def on_close(self):
+        """Logic invoked when the WebSocket connection is closed."""
+        print("WebSocket connection closed.")
+
+    async def on_error(self, error):
+        """Logic invoked when an error occurs in the WebSocket connection."""
+        print(f"Error: {error}")
+
+    def _print_prompt(self, text: str) -> None:
+        """Print a formatted message with a timestamp."""
+        now = datetime.datetime.now(tz=datetime.timezone.utc)
+        now_str = now.strftime("%H:%M:%S")
+        print(f"[{now_str}] {text}")
+
+    def _extract_top_n_emotions(self, emotion_scores: dict, n: int) -> dict:
+        """Extract the top N emotions based on confidence scores."""
+        sorted_emotions = sorted(emotion_scores.items(), key=lambda item: item[1], reverse=True)
+        return {emotion: score for emotion, score in sorted_emotions[:n]}
+
+    def _print_emotion_scores(self, emotion_scores: dict) -> None:
+        """Print the emotions and their scores in a formatted, single-line manner."""
+        formatted_emotions = ' | '.join([f"{emotion} ({score:.2f})" for emotion, score in emotion_scores.items()])
+        print(f"|{formatted_emotions}|")
+
+    async def broadcast_to_clients(self, message_text, top_3_emotions):
+        """Send the assistant message and top 3 emotions to all connected WebSocket server clients."""
+        if self.server_clients:
+            data = {
+                "message": message_text,
+                "top_emotions": top_3_emotions
+            }
+            message = json.dumps(data)
+            await asyncio.gather(*[client.send(message) for client in self.server_clients if client.open])
 
 
-async def main():
-    # Load environment variables
+async def websocket_server(server_clients):
+    """WebSocket server to broadcast data to connected clients."""
+    async def handler(websocket):
+        server_clients.add(websocket)
+        try:
+            await websocket.wait_closed()
+        finally:
+            server_clients.remove(websocket)
+
+    async with websockets.serve(handler, "localhost", 8765):
+        await asyncio.Future()  # Run forever
+
+
+async def main() -> None:
+    # Retrieve any environment variables stored in the .env file
     load_dotenv()
+
+    # Retrieve the API key, Secret key, and EVI config id from the environment variables
     HUME_API_KEY = os.getenv("HUME_API_KEY")
     HUME_SECRET_KEY = os.getenv("HUME_SECRET_KEY")
     HUME_CONFIG_ID = os.getenv("HUME_CONFIG_ID")
 
-    # Initialize Hume client
+    # Initialize the asynchronous client, authenticating with your API key
     client = AsyncHumeClient(api_key=HUME_API_KEY)
+
+    # Define options for the WebSocket connection
     options = ChatConnectOptions(config_id=HUME_CONFIG_ID, secret_key=HUME_SECRET_KEY)
 
-    # Create WebSocket handler
-    websocket_handler = WebSocketHandler()
+    # Set of connected WebSocket clients
+    server_clients = set()
 
-    # Connect to the external WebSocket server
-    uri = "ws://localhost:8765"  # Update to match your server's address
-    async with websockets.connect(uri) as websocket:
-        print("Connected to the WebSocket server.")
+    # Start the WebSocket server
+    server_task = asyncio.create_task(websocket_server(server_clients))
 
-        # Connect to the Hume EVI WebSocket
-        async with client.empathic_voice.chat.connect_with_callbacks(
-            options=options,
-            on_open=lambda: print("Hume connection opened."),
-            on_message=websocket_handler.handle_hume_message,
-            on_close=lambda: print("Hume connection closed."),
-            on_error=lambda e: print(f"Hume error: {e}"),
-        ) as hume_socket:
-            websocket_handler.set_socket(hume_socket)
+    # Instantiate the WebSocketHandler
+    websocket_handler = WebSocketHandler(server_clients)
 
-            # Optionally handle microphone input
-            microphone_task = asyncio.create_task(
-                MicrophoneInterface.start(
-                    hume_socket,
-                    allow_user_interrupt=False,
-                    byte_stream=websocket_handler.byte_strs,
-                )
+    # Open the WebSocket connection with the configuration options
+    async with client.empathic_voice.chat.connect_with_callbacks(
+        options=options,
+        on_open=websocket_handler.on_open,
+        on_message=websocket_handler.on_message,
+        on_close=websocket_handler.on_close,
+        on_error=websocket_handler.on_error
+    ) as socket:
+
+        # Set the socket instance in the handler
+        websocket_handler.set_socket(socket)
+
+        # Create asynchronous tasks
+        microphone_task = asyncio.create_task(
+            MicrophoneInterface.start(
+                socket,
+                allow_user_interrupt=False,
+                byte_stream=websocket_handler.byte_strs
             )
+        )
 
-            # Handle user input and forward to Hume or server
-            while True:
-                user_input = input("Enter a message to send: ")
-                if user_input.lower() == "exit":
-                    print("Exiting application.")
-                    break
+        # Schedule the coroutines to occur simultaneously
+        await asyncio.gather(server_task, microphone_task)
 
-                # Send user input to Hume
-                await hume_socket.send_user_input({"text": user_input})
-
-                # Forward processed messages to the external server
-                hume_message = await websocket_handler.handle_hume_message(SubscribeEvent(
-                    type="user_message", 
-                    message={"role": "user", "content": user_input}
-                ))
-                await websocket_handler.send_to_websocket_server(websocket, hume_message)
-
-            # Cancel the microphone task if active
-            if microphone_task:
-                microphone_task.cancel()
-
-
+# Execute the main asynchronous function using asyncio's event loop
 if __name__ == "__main__":
     asyncio.run(main())
