@@ -12,6 +12,8 @@ from hume.core.api_error import ApiError
 from hume import MicrophoneInterface, Stream
 import websockets
 
+clients = {}
+
 class WebSocketHandler:
     """Handler for containing the EVI WebSocket and associated socket handling behavior."""
 
@@ -20,6 +22,13 @@ class WebSocketHandler:
         self.socket = None
         self.byte_strs = Stream.new()
         self.server_clients = server_clients  # Reference to the WebSocket server's clients
+
+    async def register_client(self, websocket):
+        """Register a new WebSocket client."""
+        self.clients.add(websocket)
+        # Receive client ID upon connection
+        client_id = await websocket.recv()
+        clients[client_id] = websocket  # Register the client
 
     def set_socket(self, socket: ChatWebsocketConnection):
         """Set the socket."""
@@ -52,8 +61,7 @@ class WebSocketHandler:
                 await self.broadcast_to_clients(message_text, top_3_emotions)
         elif message.type == "audio_output":
             message_str: str = message.data
-            message_bytes = base64.b64decode(message_str.encode("utf-8"))
-            await self.byte_strs.put(message_bytes)
+            await self.broadcast_audio_to_clients(message_str)
             return
         elif message.type == "error":
             error_message: str = message.message
@@ -108,6 +116,12 @@ class WebSocketHandler:
             message = json.dumps(data)
             await asyncio.gather(*[client.send(message) for client in self.server_clients if client.open])
 
+    async def broadcast_audio_to_clients(self, audio_str):
+        """Send the assistant message and top 3 emotions to all connected WebSocket server clients."""
+        if "humeClient" in clients:
+                    hume_websocket = clients["humeClient"]
+                    await hume_websocket.send(audio_str)
+        return
 
 async def websocket_server(server_clients):
     """WebSocket server to broadcast data to connected clients."""
@@ -172,4 +186,5 @@ async def main() -> None:
 
 # Execute the main asynchronous function using asyncio's event loop
 if __name__ == "__main__":
+    print("humeserver")
     asyncio.run(main())

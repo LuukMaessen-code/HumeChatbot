@@ -6,21 +6,28 @@ async def bridge_data():
     """
     Connect to the first WebSocket server to receive data and forward it to the second WebSocket server.
     """
-    first_server_uri = "ws://localhost:8765"  # Replace with the URI of the first server
-    second_server_uri = "ws://localhost:9000"  # Replace with the URI of the second server
+    hume_server_uri = "ws://localhost:8765"  # Replace with the URI of the hume server
+    fontys_server_uri = "ws://localhost:9000"  # Replace with the URI of the fontys server
 
     while True:
         try:
-            print(f"Connecting to first server at {first_server_uri}...")
-            async with websockets.connect(first_server_uri) as first_server_socket:
+            print(f"Connecting to first server at {hume_server_uri}...")
+            async with websockets.connect(hume_server_uri) as first_server_socket:
                 print(f"Connected to first server! Waiting for data...\n")
                 
-                print(f"Connecting to second server at {second_server_uri}...")
-                async with websockets.connect(second_server_uri) as second_server_socket:
+                print(f"Connecting to second server at {fontys_server_uri}...")
+                async with websockets.connect(fontys_server_uri) as second_server_socket:
                     print(f"Connected to second server! Forwarding data...\n")
 
                     while True:
                         try:
+                            # Determine if the message is binary or text
+                            if isinstance(message, (bytes, bytearray)):
+                                print("Binary audio data detected. Forwarding to second server.")
+                                
+                                # Forward the binary data to the second server
+                                await second_server_socket.send(message)
+
                             # Receive data from the first server
                             message = await first_server_socket.recv()
                             print("Received data from first server:")
@@ -45,4 +52,5 @@ async def bridge_data():
         await asyncio.sleep(5)
 
 if __name__ == "__main__":
+    print("intermediateclient")
     asyncio.run(bridge_data())
