@@ -2,6 +2,7 @@ import asyncio
 import websockets
 import websockets
 from websockets.exceptions import ConnectionClosed
+import json
 
 # Dictionary to store connected clients
 clients = {}
@@ -16,8 +17,14 @@ class WebSocketHandler:
         """Register a new WebSocket client."""
         self.clients.add(websocket)
         # Receive client ID upon connection
-        client_id = await websocket.recv()
-        clients[client_id] = websocket  # Register the client
+        if (await websocket.recv()):
+            client_id = await websocket.recv()
+            clients[client_id] = websocket  # Register the client
+            print(clients)
+        else:
+            client_id = "HumeClient"
+            clients[client_id] = websocket
+            print(clients)
 
     async def unregister_client(self, websocket):
         """Unregister a WebSocket client."""
@@ -39,39 +46,74 @@ class WebSocketHandler:
         try:
             async for message in websocket:
                 print(f"Message received from {websocket.remote_address}: {message}")
-                # Broadcast the message to all connected clients
-                for client in handler.clients:
-                    if client != websocket:  # Avoid echoing the message back to the sender
-                        await client.send(f"Broadcast from {websocket.remote_address}: {message}")
+                print(f"clients connected:{clients}")
+                # If the message is a JSON with text data
+                try:
+                    parsed_message = json.loads(message)
+                    message_type = parsed_message.get("type")
+
+                    if message_type == "text":
+                        # Handle text message containing two different text pieces
+                        print(f"Text Message: {parsed_message['text1']} | {parsed_message['text2']}")
+                        # You can broadcast or process the text data as needed
+
+                    elif message_type == "audio":
+                        # Handle audio message (base64-encoded)
+                        print(f"Audio data received")
+                        audio_data = parsed_message['data']
+                        # Forward audio to "frontClient" or process
+                        if "frontClient" in clients:
+                            front_websocket = clients["frontClient"]
+                            await front_websocket.send(json.dumps({"type": "audio", "data": audio_data}))
+                            print(f"Audio data forwarded to frontClient")
+                
+                except json.JSONDecodeError:
+                    # Handle raw base64-encoded audio data as a string
+                    print("Received base64-encoded audio data")
+                    if isinstance(message, str):
+                        # Send base64 audio data to "frontClient"
+                        if "frontClient" in clients:
+                            front_websocket = clients["frontClient"]
+                            await front_websocket.send(message)
+                            print(f"Base64 audio forwarded to frontClient")
+                
         except websockets.ConnectionClosed:
             print(f"Client {websocket.remote_address} disconnected.")
         finally:
             await handler.unregister_client(websocket)
-            print(f"Client {websocket.remote_address} removed from the set.")
 
-    async def on_audio_recieve(websocket, clients):
-        client_id = clients.client_id
+    # async def on_message(self, websocket, handler):
+    #     try:
+    #         async for message in websocket:
+    #             print(f"Message received from {websocket.remote_address}: {message}")
+    #             # Broadcast the message to all connected clients
+    #             for client in handler.clients:
+    #                 if client != websocket:  # Avoid echoing the message back to the sender
+    #                     await client.send(f"Broadcast from {websocket.remote_address}: {message}")
+    #     except websockets.ConnectionClosed:
+    #         print(f"Client {websocket.remote_address} disconnected.")
+    #     finally:
+    #         await handler.unregister_client(websocket)
+    #         print(f"Client {websocket.remote_address} removed from the set.")
 
-        try:
-            # Receive a message from the client
-            message = await websocket.recv()
+    # async def on_audio_recieve(self, websocket, clients):
+    #     client_id = clients.client_id
 
-            # Handle audio data forwarding
-            if client_id == "HumeClient" and isinstance(message, str):
-                print(f"Audio data received from {client_id}")
+    #     try:
+    #         # Receive a message from the client
+    #         message = await websocket.recv()
+
+    #         # Handle audio data forwarding
+    #         if client_id != "frontClient" and isinstance(message, str):
+    #             print(f"Audio data received from {client_id}")
                 
-                # Forward the audio data to "frontClient"
-                if "frontClient" in clients:
-                    front_websocket = clients["frontClient"]
-                    await front_websocket.send(message)
-                    print(f"Audio data forwarded to frontClient")
-                else:
-                    print("frontClient is not connected.")
-                    
-        except websockets.ConnectionClosed:
-            print(f"Connection closed: {client_id}")
-        except Exception as e:
-            print(f"An error occurred while handling client {client_id}: {e}")
+    #             # Forward the audio data to "frontClient"
+    #             if "frontClient" in clients:
+    #                 front_websocket = clients["frontClient"]
+    #                 await front_websocket.send(message)
+    #                 print(f"Audio data forwarded to frontClient")
+    #             else:
+    #                 print("frontClient is not connected.")
         
 async def websocket_server(handler: WebSocketHandler, host="localhost", port=9000):
     """WebSocket server to handle clients."""

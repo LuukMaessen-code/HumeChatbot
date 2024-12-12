@@ -27,7 +27,7 @@ class WebSocketHandler:
         """Register a new WebSocket client."""
         self.clients.add(websocket)
         # Receive client ID upon connection
-        client_id = await websocket.recv()
+        client_id = "HumeClient"
         clients[client_id] = websocket  # Register the client
 
     def set_socket(self, socket: ChatWebsocketConnection):
@@ -118,10 +118,8 @@ class WebSocketHandler:
 
     async def broadcast_audio_to_clients(self, audio_str):
         """Send the assistant message and top 3 emotions to all connected WebSocket server clients."""
-        if "humeClient" in clients:
-                    hume_websocket = clients["humeClient"]
-                    await hume_websocket.send(audio_str)
-        return
+        if self.server_clients:
+            await asyncio.gather(*[client.send(audio_str) for client in self.server_clients if client.open])
 
 async def websocket_server(server_clients):
     """WebSocket server to broadcast data to connected clients."""

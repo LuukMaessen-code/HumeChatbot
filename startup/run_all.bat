@@ -1,6 +1,6 @@
 @echo off
 REM Change to the Websockets directory
-cd /d C:\Users\luukm\Documents\GitHub\Websockets
+cd /d C:\Code\git\evipython
 
 REM Run server.py in the background
 start "" python server.py

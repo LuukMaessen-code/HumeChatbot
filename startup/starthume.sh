@@ -3,7 +3,7 @@
 echo "Starting shell script..."
 
 # Navigate to the correct directory
-cd /mnt/c/Users/luukm/Documents/GitHub/Websockets || { echo "Directory not found!"; exit 1; }
+cd /mnt/c/code/git/evipython || { echo "Directory not found!"; exit 1; }
 
 echo "Activated directory, now activating the virtual environment..."
 
