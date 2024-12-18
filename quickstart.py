@@ -12,8 +12,6 @@ from hume.core.api_error import ApiError
 from hume import MicrophoneInterface, Stream
 import websockets
 
-clients = {}
-
 class WebSocketHandler:
     """Handler for containing the EVI WebSocket and associated socket handling behavior."""
 
@@ -22,13 +20,6 @@ class WebSocketHandler:
         self.socket = None
         self.byte_strs = Stream.new()
         self.server_clients = server_clients  # Reference to the WebSocket server's clients
-
-    async def register_client(self, websocket):
-        """Register a new WebSocket client."""
-        self.clients.add(websocket)
-        # Receive client ID upon connection
-        client_id = "HumeClient"
-        clients[client_id] = websocket  # Register the client
 
     def set_socket(self, socket: ChatWebsocketConnection):
         """Set the socket."""
@@ -58,9 +49,11 @@ class WebSocketHandler:
                 # Extract the top 3 emotions
                 top_3_emotions = self._extract_top_n_emotions(scores, 3)
                 # Send data to connected WebSocket server clients
+                print("sending text")
                 await self.broadcast_to_clients(message_text, top_3_emotions)
         elif message.type == "audio_output":
             message_str: str = message.data
+            print("sending audio data")
             await self.broadcast_audio_to_clients(message_str)
             return
         elif message.type == "error":
@@ -119,7 +112,10 @@ class WebSocketHandler:
     async def broadcast_audio_to_clients(self, audio_str):
         """Send the assistant message and top 3 emotions to all connected WebSocket server clients."""
         if self.server_clients:
+            print(f"Broadcasting audio to {len(self.server_clients)} clients.")
             await asyncio.gather(*[client.send(audio_str) for client in self.server_clients if client.open])
+        else:
+            print("no clients...")
 
 async def websocket_server(server_clients):
     """WebSocket server to broadcast data to connected clients."""

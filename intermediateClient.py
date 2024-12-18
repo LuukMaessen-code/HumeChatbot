@@ -11,37 +11,43 @@ async def bridge_data():
 
     while True:
         try:
-            print(f"Connecting to first server at {fontys_server_uri}...")
-            async with websockets.connect(fontys_server_uri) as second_server_socket:
-                print(f"Connected to first server! Forwarding data...\n")
-            
-                print(f"Connecting to second server at {hume_server_uri}...")
-                async with websockets.connect(hume_server_uri) as first_server_socket:
-                    print(f"Connected to second server! Waiting for data...\n")
+            print(f"Connecting to Fontys server at {fontys_server_uri}...")
+            async with websockets.connect(fontys_server_uri) as fontys_socket:
+                print(f"Connected to Fontys server!")
+
+                print(f"Connecting to Hume server at {hume_server_uri}...")
+                async with websockets.connect(hume_server_uri) as hume_socket:
+                    print(f"Connected to Hume server! Waiting for data...\n")
 
                     while True:
                         try:
-                            # Receive data from the first server
-                            message = await first_server_socket.recv()
-                            print("Received data from first server:")
-                            print(message)
-                            
+                            # Receive data from Hume server
+                            message = await hume_socket.recv()
+                            print(f"Received data from Hume server")
+                        
                             # Determine if the message is binary or text
                             if isinstance(message, (bytes, bytearray)):
-                                print("Binary audio data detected. Forwarding to second server.")
-                                
-                                # Forward the binary data to the second server
-                                await second_server_socket.send(message)
-                            
-                            # Forward the message to the second server
-                            await second_server_socket.send(message)
-                            print("Forwarded data to second server.\n")
+                                print("Binary audio data detected. Forwarding to Hume server.")
+                                await fontys_socket.send(message)  # Forward binary data
+                            else:
+                                try:
+                                    # Try parsing message as JSON for structured data forwarding
+                                    parsed_message = json.loads(message)
+                                    print(f"Parsed message: {parsed_message}")
+                                    # Forward the parsed JSON to Hume server
+                                    await fontys_socket.send(json.dumps(parsed_message))
+                                    print("Forwarded structured data to Hume server.")
+                                except json.JSONDecodeError:
+                                    # Forward raw text data as-is
+                                    print("Unstructured text data detected. Forwarding as-is.")
+                                    await fontys_socket.send(message)
 
                         except websockets.exceptions.ConnectionClosed as e:
                             print(f"Connection to one of the servers closed: {e}")
                             break
                         except Exception as e:
-                            print(f"An error occurred: {e}")
+                                print(f"An error occurred during data forwarding: {e}")
+                            
         except (ConnectionRefusedError, websockets.exceptions.InvalidURI) as e:
             print(f"Connection failed: {e}")
         except Exception as e:
@@ -51,5 +57,5 @@ async def bridge_data():
         await asyncio.sleep(5)
 
 if __name__ == "__main__":
-    print("intermediateclient")
+    print("Starting Intermediate Client...")
     asyncio.run(bridge_data())
