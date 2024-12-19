@@ -12,6 +12,11 @@ class WebSocketHandler:
         self.clients.add(websocket)
         print(f"Client registered: {websocket.remote_address}")
 
+    async def unregister_client(self, websocket):
+        """Unregister a WebSocket client."""
+        self.clients.remove(websocket)
+        print(f"Client unregistered: {websocket.remote_address}")
+
     async def on_message(self, websocket):
         """Handle messages from a client and broadcast to others."""
         try:
@@ -37,7 +42,7 @@ class WebSocketHandler:
                     elif message_type == "audio":
                         # Handle audio message
                         audio_data = parsed_message.get("data", "")
-                        print(f"Audio data received")
+                        print(f"Audio data received from {websocket.remote_address}")
 
                         # Broadcast audio data to all clients except the sender
                         await self.broadcast_message(
@@ -46,14 +51,14 @@ class WebSocketHandler:
 
                 except json.JSONDecodeError:
                     # Handle raw base64-encoded audio data
-                    print("Received base64-encoded audio data")
+                    print("Received raw base64-encoded audio data")
                     if isinstance(message, str):
                         # Broadcast base64 audio data to all clients except the sender
                         await self.broadcast_message(websocket, message)
 
         except ConnectionClosed:
             print(f"Connection closed: {websocket.remote_address}")
-        # Do not unregister the client here
+            await self.unregister_client(websocket)
 
     async def broadcast_message(self, sender, message):
         """Broadcast a message to all clients except the sender."""
@@ -72,7 +77,10 @@ class WebSocketHandler:
         async def handler_logic(websocket):
             print(f"Client connected: {websocket.remote_address}")
             await self.register_client(websocket)
-            await self.on_message(websocket)
+            try:
+                await self.on_message(websocket)
+            finally:
+                await self.unregister_client(websocket)
 
         server = await websockets.serve(handler_logic, host, port)
         print(f"WebSocket server listening on ws://{host}:{port}")

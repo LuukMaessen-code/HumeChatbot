@@ -4,10 +4,10 @@ import json
 
 async def bridge_data():
     """
-    Connect to the first WebSocket server to receive data and forward it to the second WebSocket server.
+    Connect to the Fontys server to receive data and forward it to the Hume server.
     """
-    hume_server_uri = "ws://localhost:8765"  # Replace with the URI of the hume server
-    fontys_server_uri = "ws://localhost:9000"  # Replace with the URI of the fontys server
+    fontys_server_uri = "ws://localhost:9000"  # Replace with the URI of the Fontys server
+    hume_server_uri = "ws://localhost:8765"  # Replace with the URI of the Hume server
 
     while True:
         try:
@@ -21,33 +21,33 @@ async def bridge_data():
 
                     while True:
                         try:
-                            # Receive data from Hume server
-                            message = await hume_socket.recv()
-                            print(f"Received data from Hume server")
-                        
+                            # Receive data from Fontys server
+                            message = await fontys_socket.recv()
+                            print(f"Received data from Fontys server")
+
                             # Determine if the message is binary or text
                             if isinstance(message, (bytes, bytearray)):
                                 print("Binary audio data detected. Forwarding to Hume server.")
-                                await fontys_socket.send(message)  # Forward binary data
+                                await hume_socket.send(message)  # Forward binary data
                             else:
                                 try:
                                     # Try parsing message as JSON for structured data forwarding
                                     parsed_message = json.loads(message)
                                     print(f"Parsed message: {parsed_message}")
                                     # Forward the parsed JSON to Hume server
-                                    await fontys_socket.send(json.dumps(parsed_message))
+                                    await hume_socket.send(json.dumps(parsed_message))
                                     print("Forwarded structured data to Hume server.")
                                 except json.JSONDecodeError:
                                     # Forward raw text data as-is
                                     print("Unstructured text data detected. Forwarding as-is.")
-                                    await fontys_socket.send(message)
+                                    await hume_socket.send(message)
 
                         except websockets.exceptions.ConnectionClosed as e:
                             print(f"Connection to one of the servers closed: {e}")
                             break
                         except Exception as e:
-                                print(f"An error occurred during data forwarding: {e}")
-                            
+                            print(f"An error occurred during data forwarding: {e}")
+
         except (ConnectionRefusedError, websockets.exceptions.InvalidURI) as e:
             print(f"Connection failed: {e}")
         except Exception as e:
