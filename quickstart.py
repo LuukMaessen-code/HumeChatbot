@@ -117,12 +117,19 @@ class WebSocketHandler:
         else:
             print("no clients...")
 
-async def websocket_server(server_clients):
-    """WebSocket server to broadcast data to connected clients."""
+async def websocket_server(server_clients, byte_stream):
+    """WebSocket server to receive audio data from the frontend."""
     async def handler(websocket):
         server_clients.add(websocket)
         try:
-            await websocket.wait_closed()
+            async for message in websocket:
+                # Parse the received message
+                data = json.loads(message)
+                if data["type"] == "audio":
+                    # Decode base64 audio data
+                    audio_data = base64.b64decode(data["data"])
+                    # Write decoded audio data to the byte stream
+                    byte_stream.write(audio_data)
         finally:
             server_clients.remove(websocket)
 
@@ -148,9 +155,6 @@ async def main() -> None:
     # Set of connected WebSocket clients
     server_clients = set()
 
-    # Start the WebSocket server
-    server_task = asyncio.create_task(websocket_server(server_clients))
-
     # Instantiate the WebSocketHandler
     websocket_handler = WebSocketHandler(server_clients)
 
@@ -166,7 +170,10 @@ async def main() -> None:
         # Set the socket instance in the handler
         websocket_handler.set_socket(socket)
 
-        # Create asynchronous tasks
+        # Start the WebSocket server for the frontend to send audio
+        server_task = asyncio.create_task(websocket_server(server_clients, websocket_handler.byte_strs))
+
+        # Create a task for processing audio data from the frontend
         microphone_task = asyncio.create_task(
             MicrophoneInterface.start(
                 socket,
@@ -180,5 +187,5 @@ async def main() -> None:
 
 # Execute the main asynchronous function using asyncio's event loop
 if __name__ == "__main__":
-    print("humeserver")
+    print("Hume server starting...")
     asyncio.run(main())
