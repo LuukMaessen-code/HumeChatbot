@@ -110,11 +110,15 @@ sudo apt-get --yes install libasound2-dev libportaudio2 ffmpeg
 Not yet supported.
 
 ## Usage
-This minimal implementation of Hume's Empathic User Interface (EVI) demonstrates how to authenticate, connect to, and display output from the interface in a terminal application.
-
-Below are the steps to run the project:
+Below are the steps to run the Hume project:
 1. Create a virtual environment using venv, conda or other method.
 2. Activate the virtual environment.
 3. Install the required packages and system dependencies.
-4. Execute the script by running `python quickstart.py`.
+4. Execute the script by running `python hume.py`.
 5. Terminate the script by pressing `Ctrl+C`.
+
+To run the frontend client:
+1. Open a terminal.
+2. Navigate to the correct directory.
+3. Execute the script by running `python frontClient.py`. 
+4. Terminate the script by pressing `Ctrl+C`.
