@@ -103,14 +103,15 @@ class WebSocketHandler:
         """Send the assistant message and top 3 emotions to all connected WebSocket server clients."""
         if self.server_clients:
             data = {
-                "message": message_text,
-                "top_emotions": top_3_emotions
+                "type": "text",  # Add a "type" field
+                "text1": message_text,
+                "text2": json.dumps(top_3_emotions)  # Send emotions as a JSON string in text2
             }
             message = json.dumps(data)
             await asyncio.gather(*[client.send(message) for client in self.server_clients if client.open])
 
     async def broadcast_audio_to_clients(self, audio_str):
-        """Send the assistant message and top 3 emotions to all connected WebSocket server clients."""
+        """Send the audio to all connected WebSocket server clients."""
         if self.server_clients:
             print(f"Broadcasting audio to {len(self.server_clients)} clients.")
             await asyncio.gather(*[client.send(audio_str) for client in self.server_clients if client.open])
