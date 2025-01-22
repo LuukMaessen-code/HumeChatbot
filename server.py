@@ -49,13 +49,17 @@ class WebSocketHandler:
                 # Extract the top 3 emotions
                 top_3_emotions = self._extract_top_n_emotions(scores, 3)
                 # Send data to connected WebSocket server clients
-                print("sending text")
+                # print("sending text")
                 await self.broadcast_to_clients(message_text, top_3_emotions)
         elif message.type == "audio_output":
-            message_str: str = message.data
-            print("sending audio data")
-            await self.broadcast_audio_to_clients(message_str)
-            return
+            if message.type == "playback_audio":
+                # print("Ignoring playback audio to prevent feedback.")
+                return
+            else:
+                message_str: str = message.data
+                # print("sending audio data")
+                await self.broadcast_audio_to_clients(message_str)
+                return
         elif message.type == "error":
             error_message: str = message.message
             error_code: str = message.code
@@ -171,7 +175,7 @@ async def main() -> None:
         microphone_task = asyncio.create_task(
             MicrophoneInterface.start(
                 socket,
-                allow_user_interrupt=False,
+                allow_user_interrupt=True,
                 byte_stream=websocket_handler.byte_strs
             )
         )
